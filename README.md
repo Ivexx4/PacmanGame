@@ -1,31 +1,34 @@
 # Pacman Game
-Simple Pacman for terminal made in python.
+
+A simple Pacman-style game that runs in your terminal, built with Python.
+
+> **Note:** This project is a fork of the original [Pacman_Game by go4Mor4](https://github.com/go4Mor4/Pacman_Game) and has been updated with new documentation and dependency cleanup.
 
 ## Prerequisites
 
-Before you begin, ensure you have met the following requirements:
-<!--- These are just example requirements. Add, duplicate or remove as required --->
-* You have installed the [latest version](https://www.python.org/downloads/) of `python`
-* You have installed the [latest version](https://pip.pypa.io/en/stable/installing/#upgrading-pip) of `pip`  
+Before you begin, ensure you have the following installed:
+
+* [Python 3.x](https://www.python.org/downloads/)
+* [pip](https://pip.pypa.io/en/stable/installation/) (usually included with Python)
 
 ## Installing
 
-To install, follow these steps:
+1.  Clone this repository to your local machine:
+    ```bash
+    git clone [https://github.com/Ivexx4/PacmanGame.git](https://github.com/Ivexx4/PacmanGame.git)
+    ```
+2.  Navigate into the project folder:
+    ```bash
+    cd PacmanGame
+    ```
+3.  Install the required dependency:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-* Install the project folder [here](https://github.com/go4Mor4/Pacman_Game/archive/refs/heads/main.zip), and unzip it.
+## How to Play
 
-* Go to project folder and type:
-```
-pip install -r requirements.txt
-```
-## Using
+To start the game, run the following command from the project's root directory:
 
-To start application, type:
-
-```
+```bash
 python .
-```
-
-## License
-
-This project uses the following license: [MIT](https://github.com/go4Mor4/time-calculator/blob/main/LICENSE).
