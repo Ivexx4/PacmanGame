@@ -2,7 +2,7 @@
 
 A simple Pacman-style game that runs in your terminal, built with Python.
 
-> **Note:** This project is a fork of the original [Pacman_Game by go4Mor4](https://github.com/go4Mor4/Pacman_Game) and has been updated with new documentation and dependency cleanup.
+> **Note:** This project is a fork of the original [Pacman_Game by go4Mor4](https://github.com/go4Mor4/Pacman_Game) and has been updated with new documentation dependency cleanup and pytest tests
 
 ## Prerequisites
 
