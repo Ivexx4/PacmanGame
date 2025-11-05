@@ -1,159 +1,152 @@
 """
-Pacman Game Controller
+Main controller for the Pacman game.
 
-This module contains the main game class, PacmanGame, which manages the
-game loop, state, rendering, and player/enemy interactions.
+This module contains the PacmanGame class, which manages the main loop,
+player input, state updates, and rendering to the terminal.
 """
 
-from src.pacman import Pacman
-from src.ghost import Ghost
-
+from .pacman import Pacman
+from .ghost import Ghost
+from .map import Map
 import os
+from pynput import keyboard
+from typing import List
 import time
-import keyboard
-from copy import deepcopy
-
-# Maps keyboard input keys to movement direction strings
-move_dict = {
-    'w': 'up',
-    'a': 'left',
-    's': 'down',
-    'd': 'right',
-}
-
+import queue
 
 class PacmanGame:
     """
-    Manages the main game loop, game state, and rendering to the terminal.
-
-    Attributes:
-        game_map (list[list[str]]): The base map, storing walls and pellets.
-        pacman_position (list[int]): Pacman's current [row, col] position.
-        ghost_position (list[int]): The Ghost's current [row, col] position.
-        block (int): A cooldown timer for Pacman's movement after hitting a wall.
-        output_map (list[list[str]]): A copy of the game_map used for display,
-                                      with Pacman 'P' and Ghost 'F' overlaid.
+    Manages the main game loop and state.
     """
 
-    def __init__(self, game_map, pacman_position, ghost_position):
+    def __init__(self, game_map, pacman_position: List[int], ghosts_positions: List[List[int]]) -> None:
         """
-        Initializes the PacmanGame.
+        Initializes the game.
+        """
+        if isinstance(game_map, Map):
+            self.game_map = game_map
+        else:
+            self.game_map = Map(game_map)
 
-        Args:
-            game_map (list[list[str]]): The static game board.
-            pacman_position (list[int]): The starting [row, col] for Pacman.
-            ghost_position (list[int]): The starting [row, col] for the Ghost.
-        """
-        self.game_map = game_map
         self.pacman_position = pacman_position
-        self.ghost_position = ghost_position
-        self.score = 0  # <--- ADD THIS LINE
-        self.block = 0  # Movement cooldown timer, starts at 0.
+        self.ghosts = [Ghost(self.game_map, pos) for pos in ghosts_positions]
+        self.score = 0
         self.output_map = None
+        self.turn = "ghost"
+        self.move_queue = queue.Queue(maxsize=1)
+        self.possible_moves = []
+        self.listener = keyboard.Listener(on_press=self.on_press, daemon=True)
+        self.listener.start()
 
-    def __get_output_map(self):
-        """
-        Generates the display map by placing Pacman and the Ghost.
+    def on_press(self, key):
+        """Callback function for pynput listener. Puts valid moves into a queue."""
+        move = None
+        try:
+            char_key = key.char
+            if char_key in ['w', 'a', 's', 'd']:
+                move = {'w': 'up', 'a': 'left', 's': 'down', 'd': 'right'}[char_key]
+        except AttributeError:
+            if key == keyboard.Key.up:
+                move = 'up'
+            elif key == keyboard.Key.down:
+                move = 'down'
+            elif key == keyboard.Key.left:
+                move = 'left'
+            elif key == keyboard.Key.right:
+                move = 'right'
+        
+        if move and move in self.possible_moves and self.turn == 'pacman':
+            try:
+                self.move_queue.put_nowait(move)
+            except queue.Full:
+                pass
 
-        Creates a deep copy of the base game_map and overlays the 'P' (Pacman)
-        and 'F' (Ghost) characters at their current positions.
+    def __get_possible_moves(self) -> List[str]:
+        """Returns a list of valid move directions for Pac-Man."""
+        moves = []
+        r, c = self.pacman_position
+        if not self.game_map.is_movement_blocked(self.pacman_position, [r - 1, c]):
+            moves.append('up')
+        if not self.game_map.is_movement_blocked(self.pacman_position, [r + 1, c]):
+            moves.append('down')
+        if not self.game_map.is_movement_blocked(self.pacman_position, [r, c - 1]):
+            moves.append('left')
+        if not self.game_map.is_movement_blocked(self.pacman_position, [r, c + 1]):
+            moves.append('right')
+        return moves
 
-        Returns:
-            list[list[str]]: The map to be printed to the console.
-        """
-        output_map = deepcopy(self.game_map)
-
-        output_map[self.pacman_position[0]][self.pacman_position[1]] = 'P'
-        output_map[self.ghost_position[0]][self.ghost_position[1]] = 'F'
-
-        return output_map
-
-    def print_game(self):
-        """Prints the current game state (the output_map) to the console."""
-
-        # Join each row into a string and print, separating characters with a space
+    def print_game(self) -> None:
+        """Prints the game state to the terminal."""
+        # Print a newline to ensure the cursor is at the start of a line before clearing.
+        print()
+        os.system('cls' if os.name == 'nt' else 'clear') 
+        ghost_positions = [ghost.ghost_position for ghost in self.ghosts]
+        self.output_map = self.game_map.get_display_map(self.pacman_position, ghost_positions)
+        if not self.output_map:
+            print("(Map not initialized)\n")
+            return
+        
         for row in self.output_map:
-            print(" ".join(row))
+            line = []
+            for char in row:
+                line.append(char)
+                # Emojis are wide characters; don't add a space after them.
+                if char not in ['😋', '👻']:
+                    line.append(' ')
+            print("".join(line).rstrip())
+        print(f"\nScore: {self.score}\n")
+        if self.turn == 'pacman':
+            self.possible_moves = self.__get_possible_moves()
+        print(f"Turn: {self.turn.capitalize()}'s Turn")
 
-        print("\n")  # Add a newline for spacing
-        print(f"Score: {self.score}\n")
+    def __check_victory(self) -> bool:
+        """Checks if all pellets have been collected."""
+        for row in self.game_map.tiles:
+            for tile in row:
+                if tile.has_pellet:
+                    return False
+        return True
 
-        if self.block != 0:
-            # Inform the player if their movement is on cooldown
-            print(f"Movimento bloqueado por {self.block} rodadas")
-
-    def __check_victory(self):
+    def run(self) -> None:
         """
-        Checks if the player has won the game.
-
-        Victory is achieved when no pellets ('.') remain on the base game_map.
-
-        Returns:
-            bool: True if all pellets are eaten, False otherwise.
+        Runs the main game loop.
         """
-        for line in self.game_map:
-            if "." in line:
-                return False  # Found a pellet, game is not over
-        return True  # No pellets found, player wins
+        try:
+            while True:
+                self.print_game()
 
-    def run(self):
-        """Starts and manages the main game loop."""
+                if self.__check_victory():
+                    print("CONGRATULATIONS, YOU WON!")
+                    break
 
-        # Generate the initial map for display
-        self.output_map = self.__get_output_map()
+                if self.turn == "ghost":
+                    time.sleep(0.5)
+                    for ghost in self.ghosts:
+                        self.output_map, lose = ghost.move_ghost(self.output_map)
+                        if lose:
+                            self.print_game()
+                            print("YOU LOST")
+                            # Use a return to exit the run method immediately
+                            return
+                    self.turn = "pacman"
 
-        while True:
-            # 1. Render the game
-            self.print_game()
+                elif self.turn == "pacman":
+                    try:
+                        move = self.move_queue.get(timeout=60)
+                        self.move_queue.task_done()
+                    except queue.Empty:
+                        continue
 
-            # 2. Check for victory condition
-            if not self.__check_victory():
-
-                # 3. Wait for and process player input
-                # keyboard.read_key() blocks until a key is pressed
-                key_pressed = keyboard.read_key()
-                if key_pressed in move_dict:
-                    move = move_dict.get(key_pressed)
-
-                    # 4. Calculate Pacman's move
-                    # A new Pacman object is created to calculate the next state
-                    game_map, output_map, pacman_position, block, lose = Pacman(
-                        self.game_map, self.output_map,
-                        self.pacman_position,
-                        move, self.block
+                    game_map_obj, output_map, pacman_position, lose = Pacman(
+                        self.game_map, self.output_map, self.pacman_position, move
                     ).move_pacman()
-
-                    # 5. Update game state from Pacman's move
-                    self.game_map = game_map
-                    self.output_map = output_map
-                    self.pacman_position = pacman_position
-                    self.block = block
-
-                    # 6. Check for lose condition (Pacman hit by Ghost)
+                    self.game_map, self.output_map, self.pacman_position = game_map_obj, output_map, pacman_position
+                    
                     if lose:
-                        print("VOCÊ PERDEU")
+                        self.print_game()
+                        print("YOU LOST")
                         break
+                    self.turn = "ghost"
 
-                    # 7. Calculate Ghost's move
-                    # A new Ghost object is created to calculate its next move
-                    output_map, ghost_position, lose = Ghost(
-                        self.game_map,
-                        self.output_map,
-                        self.ghost_position
-                    ).move_ghost()
-
-                    # 8. Update game state from Ghost's move
-                    self.output_map = output_map
-                    self.ghost_position = ghost_position
-
-                    # 9. Check for lose condition (Ghost hit Pacman)
-                    if lose:
-                        print("VOCÊ PERDEU")
-                        break
-            else:
-                # Victory condition was met
-                print("PARABENS VOCÊ VENCEU")
-                break
-
-            # 10. Clear the console for the next frame
-            os.system('cls' if os.name == 'nt' else 'clear')
+        finally:
+            self.listener.stop()

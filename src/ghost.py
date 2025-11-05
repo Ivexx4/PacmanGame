@@ -6,136 +6,92 @@ enemy movement (AI), collision detection, and interaction with map objects.
 """
 
 from random import choice
-from copy import deepcopy
+from typing import List, Tuple, Optional
 
-# Define tile types
-GOOD_BLOCKS = [".", " "]  # Tiles the Ghost can move onto (pellets, empty space)
-BAD_BLOCKS = ["="]  # Tiles the Ghost cannot move onto (walls)
-ENEMY_BLOCKS = ["P"]  # The Ghost's target (Pacman)
-
+ENEMY_BLOCKS = ["😋"]  # The Ghost's target (Pacman)
 
 class Ghost:
     """
-    Handles the Ghost's movement logic for a single turn.
-
-    This class is instantiated by the main game loop each turn to calculate
-    the result of the Ghost's move. The AI is a simple random choice
-    of available valid moves.
+    Calculates and applies the ghost's movement per turn.
     """
 
-    def __init__(self, game_map, output_map, ghost_position):
+    def __init__(self, game_map, output_map, ghost_position: List[int]) -> None:
         """
-        Initializes the Ghost move calculator.
+        Initializes the Ghost movement calculator.
 
         Args:
-            game_map (list[list[str]]): The base map (walls, pellets).
-            output_map (list[list[str]]): The display map (with 'P' and 'F').
-            ghost_position (list[int]): The Ghost's current [row, col].
+            game_map: Map instance (provides tile and wall data).
+            output_map: current display map.
+            ghost_position: current Ghost position [row, col].
         """
         self.game_map = game_map
         self.output_map = output_map
         self.ghost_position = ghost_position
         self.lose = False  # Flag to indicate if the move results in a loss
 
-    def __get_ghost_move_possibilities(self):
+    def __get_ghost_move_possibilities(self) -> List[str]:
         """
-        Checks all four adjacent tiles and finds valid moves.
-
-        A valid move is any adjacent tile that is not a wall.
-
-        Returns:
-            list[str]: A list of valid move strings (e.g., ["up", "right"]).
+        Returns a list of valid move directions that are not blocked by walls.
         """
-        possibilities = []
-        pacman_column = [l[self.ghost_position[1]] for l in self.output_map]
-        pacman_line = self.output_map[self.ghost_position[0]]
+        possibilities: List[str] = []
+        r, c = self.ghost_position
 
-        # Check the tile content in all 4 directions
-        up_status = pacman_column[self.ghost_position[0] - 1]
-        down_status = pacman_column[self.ghost_position[0] + 1]
-        left_status = pacman_line[self.ghost_position[1] - 1]
-        right_status = pacman_line[self.ghost_position[1] + 1]
-
-        factory_status = {
-            "up": up_status,
-            "down": down_status,
-            "left": left_status,
-            "right": right_status
+        potential_moves = {
+            "up": [r - 1, c],
+            "down": [r + 1, c],
+            "left": [r, c - 1],
+            "right": [r, c + 1]
         }
 
-        # Build a list of moves that don't lead into a wall
-        for possibility, possibility_value in factory_status.items():
-            if possibility_value not in BAD_BLOCKS:
-                possibilities.append(possibility)
+        for move, new_pos in potential_moves.items():
+            # Ghosts should not be blocked by walls, but can move through other ghosts
+            is_blocked = self.game_map.is_movement_blocked(self.ghost_position, new_pos)
+            if not is_blocked:
+                possibilities.append(move)
 
         return possibilities
 
-    def get_move(self):
+    def get_move(self) -> Optional[str]:
         """
-        The core Ghost AI.
-
-        Randomly selects one move from the list of valid possibilities.
-
-        Returns:
-            str: The chosen move (e.g., "up", "down", "left", "right").
+        Randomly selects one of the valid move possibilities.
         """
-        return choice(self.__get_ghost_move_possibilities())
+        return choice(self.__get_ghost_move_possibilities() or [None])
 
-    def get_next_ghost_position_location(self, move):
+    def get_next_ghost_position(self, move: str) -> Optional[List[int]]:
         """
-        Calculates the destination [row, col] coordinates for the chosen move.
-
-        Args:
-            move (str): The chosen move direction.
-
-        Returns:
-            list[int]: The target [row, col] position.
+        Converts a move string into a target [row, col] position.
         """
-        next_up_position = [self.ghost_position[0] - 1, self.ghost_position[1]]
-        next_down_position = [self.ghost_position[0] + 1, self.ghost_position[1]]
-        next_left_position = [self.ghost_position[0], self.ghost_position[1] - 1]
-        next_right_position = [self.ghost_position[0], self.ghost_position[1] + 1]
-
-        factory_position = {
-            "up": next_up_position,
-            "down": next_down_position,
-            "left": next_left_position,
-            "right": next_right_position
+        r, c = self.ghost_position
+        moves = {
+            "up": [r - 1, c],
+            "down": [r + 1, c],
+            "left": [r, c - 1],
+            "right": [r, c + 1]
         }
+        return moves.get(move)
 
-        return factory_position.get(move)
-
-    def move_ghost(self):
+    def move_ghost(self) -> Tuple[List[List[str]], List[int], bool]:
         """
-        Executes the Ghost's move for the turn.
-
-        It gets a random valid move, calculates the new position,
-        and checks if that position is the player. It then updates
-        the output_map to reflect the Ghost's new position.
-
-        Returns:
-            tuple: A tuple containing the new game state:
-                   (output_map, next_ghost_position_location, lose)
+        Executes a single tile of movement for the Ghost.
         """
-        # 1. Get the random move
         chosen_move = self.get_move()
 
-        # 2. Calculate the target position
-        next_ghost_position_location = self.get_next_ghost_position_location(chosen_move)
+        if chosen_move is None:
+            return self.output_map, self.ghost_position, self.lose
 
-        # 3. Check if the target is Pacman
-        if self.output_map[next_ghost_position_location[0]][next_ghost_position_location[1]] in ENEMY_BLOCKS:
-            self.lose = True  # Ghost caught Pacman
+        new_pos = self.get_next_ghost_position(chosen_move)
+        if new_pos is None:
+            return self.output_map, self.ghost_position, self.lose
 
-        # 4. Update the display map
-        # Restore the original tile (e.g., '.' or ' ') from the base map
-        current_pos = self.ghost_position
-        self.output_map[current_pos[0]][current_pos[1]] = deepcopy(self.game_map[current_pos[0]][current_pos[1]])
+        # Check for collision with Pacman
+        if self.output_map[new_pos[0]][new_pos[1]] in ENEMY_BLOCKS:
+            self.lose = True
 
-        # Draw the Ghost 'F' in its new position
-        new_pos = next_ghost_position_location
-        self.output_map[new_pos[0]][new_pos[1]] = "F"
+        # Restore the base tile character at the ghost's old position
+        r_cur, c_cur = self.ghost_position
+        self.output_map[r_cur][c_cur] = self.game_map.get_tile_char(r_cur, c_cur)
 
-        response = (self.output_map, next_ghost_position_location, self.lose)
+        # Draw the ghost at the new position
+        self.output_map[new_pos[0]][new_pos[1]] = "👻"
 
-        return response
+        return self.output_map, new_pos, self.lose

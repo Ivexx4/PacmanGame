@@ -1,148 +1,102 @@
 """
 Pacman Class Module
 
-This module defines the Pacman class, which encapsulates the logic for
-player movement, collision detection, and interaction with map objects.
+This module defines the Pacman class, responsible for:
+- validating player movement attempts,
+- applying changes to the map (removing pellets),
+- updating the display map (output_map).
 """
 
-# Define tile types
-GOOD_BLOCKS = [".", " "]  # Tiles Pacman can move onto (pellets, empty space)
-BAD_BLOCKS = ["="]  # Tiles Pacman cannot move onto (walls)
-ENEMY_BLOCKS = ["F"]  # Tiles that cause Pacman to lose (ghosts)
+from typing import List, Tuple, Optional
 
+# Define tile types
+ENEMY_BLOCKS = ["👻"]  # Tiles that cause Pacman to lose (ghosts)
 
 class Pacman:
     """
-    Handles Pacman's movement logic for a single turn.
+    Calculates and applies Pacman's movement per turn.
 
-    This class is instantiated by the main game loop each turn to calculate
-    the result of a player's intended move.
+    Main methods:
+        - _validate_move: checks if the intended move is allowed.
+        - move_pacman: applies the move and updates maps/state.
     """
 
-    def __init__(self, game_map, output_map, pacman_position, move, block):
+    def __init__(self, game_map, output_map, pacman_position: List[int], move: str) -> None:
         """
-        Initializes the Pacman move calculator.
+        Initializes the Pacman movement calculator.
 
         Args:
-            game_map (list[list[str]]): The base map (walls, pellets).
-            output_map (list[list[str]]): The display map (with 'P' and 'F').
-            pacman_position (list[int]): Pacman's current [row, col].
-            move (str): The intended move ("up", "down", "left", "right").
-            block (int): The current movement cooldown timer.
+            game_map: Map instance (provides base tiles and utilities).
+            output_map: current display map (with 'P' and 'F').
+            pacman_position: current Pacman position [row, col].
+            move: desired direction ("up", "down", "left", "right").
         """
         self.game_map = game_map
         self.output_map = output_map
         self.pacman_position = pacman_position
         self.move = move
-        self.block = block
         self.lose = False  # Flag to indicate if the move results in a loss
 
     @property
-    def current_move_status(self):
+    def next_pacman_position_location(self) -> Optional[List[int]]:
         """
-        Checks the type of block at the target destination.
+        Calculates the target position based on the stored move direction.
 
         Returns:
-            str: The character on the output_map at the destination tile
-                 (e.g., '=', '.', 'F', ' ').
+            [row, col] of the target position or None if the direction is invalid.
         """
-        pacman_column = [l[self.pacman_position[1]] for l in self.output_map]
-        pacman_line = self.output_map[self.pacman_position[0]]
-
-        up_status = pacman_column[self.pacman_position[0] - 1]
-        down_status = pacman_column[self.pacman_position[0] + 1]
-        left_status = pacman_line[self.pacman_position[1] - 1]
-        right_status = pacman_line[self.pacman_position[1] + 1]
-
-        factory_status = {
-            "up": up_status,
-            "down": down_status,
-            "left": left_status,
-            "right": right_status
+        r, c = self.pacman_position
+        moves = {
+            "up": [r - 1, c],
+            "down": [r + 1, c],
+            "left": [r, c - 1],
+            "right": [r, c + 1]
         }
+        return moves.get(self.move)
 
-        return factory_status.get(self.move)
-
-    @property
-    def next_pacman_position_location(self):
+    def _validate_move(self) -> bool:
         """
-        Calculates the destination [row, col] coordinates for the move.
-
-        Returns:
-            list[int]: The target [row, col] position.
+        Validates the intended move by checking for walls and enemies.
         """
-        next_up_position = [self.pacman_position[0] - 1, self.pacman_position[1]]
-        next_down_position = [self.pacman_position[0] + 1, self.pacman_position[1]]
-        next_left_position = [self.pacman_position[0], self.pacman_position[1] - 1]
-        next_right_position = [self.pacman_position[0], self.pacman_position[1] + 1]
-
-        factory_position = {
-            "up": next_up_position,
-            "down": next_down_position,
-            "left": next_left_position,
-            "right": next_right_position
-        }
-
-        return factory_position.get(self.move)
-
-    def _validate_move(self):
-        """
-        Validates the intended move and updates state flags.
-
-        - If the destination is a wall, sets a 2-turn move block.
-        - If the destination is an enemy, sets the lose flag.
-        - If the destination is valid (good), returns True.
-
-        Returns:
-            bool: True if the move is valid, False otherwise.
-        """
-        if self.current_move_status in BAD_BLOCKS:
-            self.block = 2  # Set 2-turn cooldown for hitting a wall
+        new_pos = self.next_pacman_position_location
+        if new_pos is None:
             return False
 
-        elif self.current_move_status in ENEMY_BLOCKS:
-            self.lose = True  # Player moved onto a ghost
+        # Check for walls using the border-based method
+        if self.game_map.is_movement_blocked(self.pacman_position, new_pos):
             return False
 
-        elif self.current_move_status in GOOD_BLOCKS:
-            return True  # Move is valid
+        # Check for enemies on the display map
+        if self.output_map[new_pos[0]][new_pos[1]] in ENEMY_BLOCKS:
+            self.lose = True
+            # This is a valid move, but it results in a loss
+            return True
 
-    def move_pacman(self):
+        return True
+
+    def move_pacman(self) -> Tuple[object, List[List[str]], List[int], bool]:
         """
-        Executes Pacman's move for the turn.
-
-        If Pacman is on a move cooldown, it decrements the timer.
-        If not on cooldown, it validates the move.
-        If the move is valid, it updates the game_map (removes pellet)
-        and output_map (moves 'P') and updates the pacman_position.
-
-        Returns:
-            tuple: A tuple containing the new game state:
-                   (game_map, output_map, pacman_position, block, lose)
+        Executes a single tile of movement for Pacman.
         """
-        if self.block != 0:
-            # Player is on cooldown, decrement timer and do nothing else
-            self.block -= 1
-            response = (self.game_map, self.output_map, self.pacman_position, self.block, self.lose)
-        else:
-            # Player is not on cooldown, attempt to move
-            if self._validate_move():
-                # Move is valid, update maps
+        if not self._validate_move():
+            return self.game_map, self.output_map, self.pacman_position, self.lose
 
-                # Erase pellet '.' from the base map
-                self.game_map[self.pacman_position[0]][self.pacman_position[1]] = " "
+        new_pos = self.next_pacman_position_location
+        if new_pos is None:
+            return self.game_map, self.output_map, self.pacman_position, self.lose
 
-                # Erase 'P' from old position on display map
-                self.output_map[self.pacman_position[0]][self.pacman_position[1]] = " "
+        # If the move results in a loss, update state and return
+        if self.lose:
+            return self.game_map, self.output_map, self.pacman_position, self.lose
 
-                # Draw 'P' on new position on display map
-                new_pos = self.next_pacman_position_location
-                self.output_map[new_pos[0]][new_pos[1]] = "P"
+        # Update output_map: restore base tile at the old location
+        r_old, c_old = self.pacman_position
+        self.output_map[r_old][c_old] = " "
 
-                response = (self.game_map, self.output_map, new_pos, self.block, self.lose)
+        # Place Pacman on the new tile
+        self.output_map[new_pos[0]][new_pos[1]] = "😋"
 
-            else:
-                # Move was invalid (hit wall) or player lost
-                response = (self.game_map, self.output_map, self.pacman_position, self.block, self.lose)
+        # Remove pellet from the game map at the new position
+        self.game_map.remove_pellet(new_pos)
 
-        return response
+        return self.game_map, self.output_map, new_pos, self.lose
