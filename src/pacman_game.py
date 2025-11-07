@@ -54,7 +54,6 @@ class PacmanGame:
         self._set_display_chars()
 
         self.pacman_position = pacman_position
-        self.ghosts_positions = ghosts_positions
         self.score = 0
         self.output_map = None
         self.turn = "ghost"
@@ -62,6 +61,11 @@ class PacmanGame:
         self.possible_moves = []
         self.listener = keyboard.Listener(on_press=self.on_press, daemon=True)
         self.listener.start()
+
+        # Create persistent Ghost objects
+        self.ghosts: List[Ghost] = []
+        for pos in ghosts_positions:
+            self.ghosts.append(Ghost(self, pos, (self.rows, self.cols)))
 
     def on_press(self, key):
         """Callback function for pynput listener. Puts valid moves into a queue."""
@@ -102,10 +106,10 @@ class PacmanGame:
 
     def print_game(self) -> None:
         """Prints the game state to the terminal."""
-        # Print a newline to ensure the cursor is at the start of a line before clearing.
+        ghost_positions = [ghost.position for ghost in self.ghosts]
         print()
         os.system('cls' if os.name == 'nt' else 'clear') 
-        self.output_map = self.get_display_map(self.pacman_position, self.ghosts_positions)
+        self.output_map = self.get_display_map(self.pacman_position, ghost_positions)
         if not self.output_map:
             print("(Map not initialized)\n")
             return
@@ -114,7 +118,6 @@ class PacmanGame:
             line = []
             for char in row:
                 line.append(char)
-                # Emojis are wide characters; don't add a space after them.
                 if char not in ['😋', '👻']:
                     line.append(' ')
             print("".join(line).rstrip())
@@ -135,8 +138,8 @@ class PacmanGame:
         Runs the main game loop.
         """
         try:
-            # Initialize the output_map without printing it
-            self.output_map = self.get_display_map(self.pacman_position, self.ghosts_positions)
+            ghost_positions = [ghost.position for ghost in self.ghosts]
+            self.output_map = self.get_display_map(self.pacman_position, ghost_positions)
             while True:
                 if self.__check_victory():
                     print("CONGRATULATIONS, YOU WON!")
@@ -145,23 +148,12 @@ class PacmanGame:
                 if self.turn == "ghost":
                     time.sleep(0.5)
                     
-                    new_ghost_positions = []
-                    turn_output_map = self.output_map
-                    
-                    for ghost_pos in self.ghosts_positions:
-                        ghost = Ghost(self, turn_output_map, ghost_pos)
-                        map_after_move, new_ghost_pos, lose = ghost.move_ghost()
-                        
-                        turn_output_map = map_after_move
-                        new_ghost_positions.append(new_ghost_pos)
-                        
-                        if lose:
-                            self.ghosts_positions = new_ghost_positions
+                    for ghost in self.ghosts:
+                        if ghost.move():
                             self.print_game()
                             print("YOU LOST")
                             return
 
-                    self.ghosts_positions = new_ghost_positions
                     self.turn = "pacman"
                     self.print_game()
 
@@ -177,7 +169,6 @@ class PacmanGame:
                     ).move_pacman()
                     self.output_map, self.pacman_position = output_map, pacman_position
                     
-                    # Check for pellets at the new position and update score
                     if self.remove_pellet(self.pacman_position):
                         self.score += 10
 
@@ -198,12 +189,10 @@ class PacmanGame:
         """
         for r in range(self.rows):
             for c in range(self.cols):
-                # Check for a wall to the south
                 if r < self.rows - 1:
                     if self.tiles[r][c].is_original_wall != self.tiles[r + 1][c].is_original_wall:
                         self.tiles[r][c].wall_south = True
                         self.tiles[r + 1][c].wall_north = True
-                # Check for a wall to the east
                 if c < self.cols - 1:
                     if self.tiles[r][c].is_original_wall != self.tiles[r][c + 1].is_original_wall:
                         self.tiles[r][c].wall_east = True
@@ -217,7 +206,6 @@ class PacmanGame:
             for c in range(self.cols):
                 tile = self.tiles[r][c]
                 if tile.is_original_wall:
-                    # Display oriented walls for original wall tiles
                     has_neighbor_up = r > 0 and self.tiles[r - 1][c].is_original_wall
                     has_neighbor_down = r < self.rows - 1 and self.tiles[r + 1][c].is_original_wall
                     has_neighbor_left = c > 0 and self.tiles[r][c - 1].is_original_wall
@@ -245,7 +233,7 @@ class PacmanGame:
     def is_movement_blocked(self, from_pos: List[int], to_pos: List[int]) -> bool:
         """Checks if movement between two adjacent tiles is blocked by a wall or map bounds."""
         if not self.in_bounds(to_pos):
-            return True  # Movement out of bounds is always blocked
+            return True
 
         r_from, c_from = from_pos
         r_to, c_to = to_pos
@@ -256,7 +244,7 @@ class PacmanGame:
         if c_to == c_from - 1: return tile_from.wall_west
         if c_to == c_from + 1: return tile_from.wall_east
 
-        return True  # Non-adjacent movement is not allowed
+        return True
 
     def get_tile_char(self, row: int, col: int) -> str:
         """Returns the display character of the tile at the given position."""
@@ -286,7 +274,6 @@ class PacmanGame:
         if self.in_bounds(pacman_pos):
             r, c = pacman_pos
             out[r][c] = '😋' 
-        # Place all ghosts on the map
         for ghost_pos in ghosts_positions:
             if self.in_bounds(ghost_pos):
                 r, c = ghost_pos
