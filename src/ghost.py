@@ -15,16 +15,16 @@ class Ghost:
     Calculates and applies the ghost's movement per turn.
     """
 
-    def __init__(self, game_map, output_map, ghost_position: List[int]) -> None:
+    def __init__(self, pacman_game, output_map, ghost_position: List[int]) -> None:
         """
         Initializes the Ghost movement calculator.
 
         Args:
-            game_map: Map instance (provides tile and wall data).
+            pacman_game: PacmanGame instance (provides tile and wall data).
             output_map: current display map.
             ghost_position: current Ghost position [row, col].
         """
-        self.game_map = game_map
+        self.pacman_game = pacman_game
         self.output_map = output_map
         self.ghost_position = ghost_position
         self.lose = False  # Flag to indicate if the move results in a loss
@@ -45,7 +45,7 @@ class Ghost:
 
         for move, new_pos in potential_moves.items():
             # Ghosts should not be blocked by walls, but can move through other ghosts
-            is_blocked = self.game_map.is_movement_blocked(self.ghost_position, new_pos)
+            is_blocked = self.pacman_game.is_movement_blocked(self.ghost_position, new_pos)
             if not is_blocked:
                 possibilities.append(move)
 
@@ -89,7 +89,7 @@ class Ghost:
 
         # Restore the base tile character at the ghost's old position
         r_cur, c_cur = self.ghost_position
-        self.output_map[r_cur][c_cur] = self.game_map.get_tile_char(r_cur, c_cur)
+        self.output_map[r_cur][c_cur] = self.pacman_game.get_tile_char(r_cur, c_cur)
 
         # Draw the ghost at the new position
         self.output_map[new_pos[0]][new_pos[1]] = "👻"

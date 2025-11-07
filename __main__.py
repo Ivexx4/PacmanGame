@@ -10,27 +10,14 @@ To run the game:
 """
 
 from src.pacman_game import PacmanGame
+from src.map_generator import MapGenerator
 
-# Define the starting position for Pacman [row, column]
-p_start_position = [6, 1]
+# Generates the map
+map_generator = MapGenerator(10, 10)
+game_map = map_generator.generate()
 
-# Define the starting positions for the Ghosts as a list of [row, column]
-ghost_start_positions = [[1, 6], [1, 1]]
-
-# Define the game map as a list of lists.
-# Symbols:
-#   '=': A wall (impassable)
-#   '.': A pellet (collectible)
-#   ' ': An empty space
-game_map = [
-    ['=', '=', '=', '=', '=', '=', '=', '=', '=', '=', '=', '='],
-    ['=', '.', '.', '.', '.', '.', '.', '.', '.', '.', '.', '='],
-    ['=', '.', '=', '=', '=', '=', '.', '.', '=', '.', '.', '='],
-    ['=', '.', '=', '.', '.', '=', '.', '=', '=', '.', '.', '='],
-    ['=', '.', '=', '.', '.', '=', '.', '=', '=', '.', '.', '='],
-    ['=', '.', '=', '.', '.', '=', '.', '.', '=', '.', '.', '='],
-    ['=', '.', '.', '.', '.', '.', '.', '.', '.', '.', '.', '='],
-    ['=', '=', '=', '=', '=', '=', '=', '=', '=', '=', '=', '=']]
+# Get starting positions for Pac-Man and ghosts
+p_start_position, ghost_start_positions = map_generator.get_start_positions()
 
 # Create an instance of the game and run it.
 PacmanGame(game_map, p_start_position, ghost_start_positions).run()
