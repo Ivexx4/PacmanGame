@@ -5,6 +5,7 @@ This module defines the base class for ghosts and their different AI personaliti
 """
 
 import random
+import collections
 from typing import List, Tuple, Optional
 
 UNKNOWN_TILE = '?'
@@ -13,11 +14,10 @@ FLOOR_TILE = ' '
 
 class BaseGhost:
     """
-    A base class for a ghost, handling memory and basic movement logic.
-    This class is not meant to be instantiated directly.
+    A base class for a ghost, handling memory, pathfinding, and basic movement logic.
     """
 
-    MAX_VISION_RANGE = 4
+    MAX_VISION_RANGE = 5
 
     def __init__(self, pacman_game, initial_position: List[int], map_dimensions: Tuple[int, int]) -> None:
         self.pacman_game = pacman_game
@@ -37,10 +37,14 @@ class BaseGhost:
     def _get_move_possibilities_from_memory(self) -> List[str]:
         possibilities: List[str] = []
         r, c = self.position
+        other_ghost_positions = [g.position for g in self.pacman_game.ghosts if g is not self]
         potential_moves = {"up": [r - 1, c], "down": [r + 1, c], "left": [r, c - 1], "right": [r, c + 1]}
-        for move, (new_r, new_c) in potential_moves.items():
-            if self.pacman_game.in_bounds([new_r, new_c]) and self.memory[new_r][new_c] != WALL_TILE:
-                possibilities.append(move)
+        
+        for move, new_pos in potential_moves.items():
+            if not self.pacman_game.in_bounds(new_pos): continue
+            if self.memory[new_pos[0]][new_pos[1]] == WALL_TILE: continue
+            if new_pos in other_ghost_positions: continue
+            possibilities.append(move)
         return possibilities
 
     def _check_vision(self, target_pos: List[int]) -> Optional[str]:
@@ -54,6 +58,35 @@ class BaseGhost:
                     break
                 if check_r == target_r and check_c == target_c:
                     return move_dir
+        return None
+
+    def _find_path(self, start_pos: List[int], target_pos: List[int]) -> Optional[List[str]]:
+        """
+        Finds the shortest path from start to target using BFS on the ghost's memory.
+        Returns the path as a list of moves (e.g., ['up', 'left', ...]).
+        """
+        if not self.pacman_game.in_bounds(target_pos) or self.memory[target_pos[0]][target_pos[1]] == WALL_TILE:
+            return None
+
+        q = collections.deque([ (start_pos, []) ]) 
+        visited = {tuple(start_pos)}
+
+        while q:
+            current_pos, path = q.popleft()
+
+            if current_pos == target_pos:
+                return path
+
+            r, c = current_pos
+            potential_moves = {"up": [r - 1, c], "down": [r + 1, c], "left": [r, c - 1], "right": [r, c + 1]}
+
+            for move, next_pos in potential_moves.items():
+                if tuple(next_pos) not in visited and self.pacman_game.in_bounds(next_pos):
+                    # Ghosts can only pathfind through what they know is a floor.
+                    if self.memory[next_pos[0]][next_pos[1]] == FLOOR_TILE:
+                        visited.add(tuple(next_pos))
+                        new_path = path + [move]
+                        q.append((next_pos, new_path))
         return None
 
     def get_move(self) -> Optional[str]:
@@ -86,17 +119,15 @@ class HunterGhost(BaseGhost):
     """
     def get_move(self) -> Optional[str]:
         possible_moves = self._get_move_possibilities_from_memory()
-        if not possible_moves:
-            return None
+        if not possible_moves: return None
 
         seen_direction = self._check_vision(self.pacman_game.pacman_position)
         if seen_direction and seen_direction in possible_moves:
             return seen_direction
 
+        # Fallback to exploration/random
         exploratory_moves = [m for m in possible_moves if self.memory[self.pacman_game.pacman_position[0]][self.pacman_game.pacman_position[1]] == UNKNOWN_TILE]
-        if exploratory_moves:
-            return random.choice(exploratory_moves)
-
+        if exploratory_moves: return random.choice(exploratory_moves)
         return random.choice(possible_moves)
 
 class AmbusherGhost(BaseGhost):
@@ -108,8 +139,7 @@ class AmbusherGhost(BaseGhost):
 
     def get_move(self) -> Optional[str]:
         possible_moves = self._get_move_possibilities_from_memory()
-        if not possible_moves:
-            return None
+        if not possible_moves: return None
 
         pacman_visible = self._check_vision(self.pacman_game.pacman_position)
         target_pos = self.pacman_game.pacman_position
@@ -120,28 +150,12 @@ class AmbusherGhost(BaseGhost):
             elif pacman_visible == "down": pacman_r += self.AMBUSH_LEAD
             elif pacman_visible == "left": pacman_c -= self.AMBUSH_LEAD
             elif pacman_visible == "right": pacman_c += self.AMBUSH_LEAD
-            
             if self.pacman_game.in_bounds([pacman_r, pacman_c]):
                 target_pos = [pacman_r, pacman_c]
 
-        best_move = None
-        min_dist = float('inf')
-        r, c = self.position
-        moves_map = {"up": [r - 1, c], "down": [r + 1, c], "left": [r, c - 1], "right": [r, c + 1]}
-
-        for move in possible_moves:
-            new_pos = moves_map[move]
-            dist = abs(new_pos[0] - target_pos[0]) + abs(new_pos[1] - target_pos[1])
-            if dist < min_dist:
-                min_dist = dist
-                best_move = move
-
-        if best_move:
-            return best_move
-
-        exploratory_moves = [m for m in possible_moves if self.memory[moves_map[m][0]][moves_map[m][1]] == UNKNOWN_TILE]
-        if exploratory_moves:
-            return random.choice(exploratory_moves)
+        path = self._find_path(self.position, target_pos)
+        if path:
+            return path[0]
 
         return random.choice(possible_moves)
 
@@ -150,7 +164,7 @@ class StrategicGhost(BaseGhost):
     Switches between patrolling and hunting (First-Order Logic).
     Rule: IF Distance(self, pacman) < HUNT_RADIUS THEN state=HUNT ELSE state=PATROL.
     """
-    HUNT_RADIUS = 8
+    HUNT_RADIUS = 10
 
     def __init__(self, pacman_game, initial_position: List[int], map_dimensions: Tuple[int, int], patrol_point: List[int]) -> None:
         super().__init__(pacman_game, initial_position, map_dimensions)
@@ -159,36 +173,19 @@ class StrategicGhost(BaseGhost):
 
     def get_move(self) -> Optional[str]:
         possible_moves = self._get_move_possibilities_from_memory()
-        if not possible_moves:
-            return None
+        if not possible_moves: return None
 
-        # First-Order Logic: Update state based on relation (distance)
-        dist_to_pacman = abs(self.position[0] - self.pacman_game.pacman_position[0]) + abs(self.position[1] - self.pacman_game.pacman_position[1])
-        if dist_to_pacman < self.HUNT_RADIUS:
+        path_to_pacman = self._find_path(self.position, self.pacman_game.pacman_position)
+        
+        if path_to_pacman and len(path_to_pacman) < self.HUNT_RADIUS:
             self.state = 'HUNT'
         else:
             self.state = 'PATROL'
 
-        # Set target based on state
-        if self.state == 'HUNT':
-            target_pos = self.pacman_game.pacman_position
-        else: # PATROL
-            target_pos = self.patrol_point
-
-        # Move towards the target
-        best_move = None
-        min_dist = float('inf')
-        r, c = self.position
-        moves_map = {"up": [r - 1, c], "down": [r + 1, c], "left": [r, c - 1], "right": [r, c + 1]}
-
-        for move in possible_moves:
-            new_pos = moves_map[move]
-            dist = abs(new_pos[0] - target_pos[0]) + abs(new_pos[1] - target_pos[1])
-            if dist < min_dist:
-                min_dist = dist
-                best_move = move
-
-        if best_move:
-            return best_move
+        target_pos = self.pacman_game.pacman_position if self.state == 'HUNT' else self.patrol_point
+        
+        path_to_target = self._find_path(self.position, target_pos)
+        if path_to_target:
+            return path_to_target[0]
 
         return random.choice(possible_moves)
