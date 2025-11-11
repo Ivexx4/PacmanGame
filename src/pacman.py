@@ -12,6 +12,7 @@ from typing import List, Tuple, Optional
 # Define tile types
 ENEMY_BLOCKS = ["👻"]  # Tiles that cause Pacman to lose (ghosts)
 
+
 class Pacman:
     """
     Calculates and applies Pacman's movement per turn.
@@ -21,7 +22,9 @@ class Pacman:
         - move_pacman: applies the move and updates maps/state.
     """
 
-    def __init__(self, pacman_game, output_map, pacman_position: List[int], move: str) -> None:
+    def __init__(
+        self, pacman_game, output_map, pacman_position: List[int], move: str
+    ) -> None:
         """
         Initializes the Pacman movement calculator.
 
@@ -35,6 +38,7 @@ class Pacman:
         self.output_map = output_map
         self.pacman_position = pacman_position
         self.move = move
+        self.last_move: Optional[str] = None
         self.lose = False  # Flag to indicate if the move results in a loss
 
     @property
@@ -50,7 +54,7 @@ class Pacman:
             "up": [r - 1, c],
             "down": [r + 1, c],
             "left": [r, c - 1],
-            "right": [r, c + 1]
+            "right": [r, c + 1],
         }
         return moves.get(self.move)
 
@@ -91,9 +95,11 @@ class Pacman:
 
         # Update output_map: the old position becomes an empty space.
         r_old, c_old = self.pacman_position
-        self.output_map[r_old][c_old] = ' '
+        self.output_map[r_old][c_old] = " "
 
         # Place Pacman on the new tile
         self.output_map[new_pos[0]][new_pos[1]] = "😋"
+
+        self.last_move = self.move
 
         return self.pacman_game, self.output_map, new_pos, self.lose
